@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏙️</text></svg>">
+<title>Jakarta City</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:#0b0e14; height:100%;
+    font-family:"Segoe UI", Arial, Helvetica, sans-serif; color:#fff;
+    -webkit-user-select:none; user-select:none; }
+  #app { position:fixed; inset:0; }
+  canvas.webgl { display:block; width:100%; height:100%; }
+
+  /* ---------- shared HUD chrome ---------- */
+  .hidden { display:none !important; }
+  #hud { position:fixed; inset:0; pointer-events:none; z-index:5; }
+  #hud .panel { background:rgba(8,10,16,.55); border:1px solid rgba(255,255,255,.14);
+    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.35); }
+
+  /* top right: money / clock / stars */
+  #statsBox { position:absolute; top:12px; right:14px; text-align:right; padding:8px 12px; min-width:170px; }
+  #money { font-size:24px; font-weight:800; color:#7ddb6a; letter-spacing:.5px;
+    text-shadow:0 2px 0 rgba(0,0,0,.45); }
+  #clockLine { font-size:15px; font-weight:700; color:#ffd76a; margin-top:1px; }
+  #stars { font-size:19px; letter-spacing:3px; color:#3a3f4a; margin-top:2px; min-height:22px; }
+  #stars .lit { color:#ffc61a; text-shadow:0 0 6px rgba(255,180,0,.8); }
+  #bars { margin-top:6px; }
+  .barRow { display:flex; align-items:center; gap:6px; justify-content:flex-end; margin-top:3px; }
+  .barRow label { font-size:10px; font-weight:700; color:#cfd6e4; width:38px; text-align:right; }
+  .barTrack { width:110px; height:9px; background:rgba(255,255,255,.14); border-radius:5px; overflow:hidden; }
+  .barFill { height:100%; width:100%; }
+  #hpFill { background:linear-gradient(90deg,#e5484d,#ff7a59); }
+  #armorFill { background:linear-gradient(90deg,#3d7bd9,#6ab0ff); }
+
+  /* weapon box */
+  #weaponBox { position:absolute; top:118px; right:14px; padding:7px 12px; text-align:right; min-width:120px; }
+  #weaponName { font-size:15px; font-weight:800; color:#fff; letter-spacing:.6px; }
+  #weaponAmmo { font-size:13px; color:#ffd76a; font-weight:700; }
+
+  /* objective / mission line */
+  #objective { position:absolute; top:12px; left:50%; transform:translateX(-50%);
+    max-width:56%; padding:7px 16px; font-size:15px; font-weight:700; color:#ffe9a8;
+    text-align:center; }
+  #objective .dist { color:#8fd0ff; }
+
+  /* zone banner + toast */
+  #zoneBanner { position:absolute; top:21%; left:50%; transform:translateX(-50%);
+    font-size:44px; font-weight:900; letter-spacing:4px; color:#fff; opacity:0;
+    text-shadow:0 3px 0 rgba(0,0,0,.35), 0 0 26px rgba(255,170,40,.35); transition:opacity .5s; }
+  #toast { position:absolute; bottom:24%; left:50%; transform:translateX(-50%);
+    padding:8px 18px; font-size:16px; font-weight:700; color:#fff; opacity:0; transition:opacity .35s;
+    text-align:center; max-width:70%; }
+
+  /* radio + speedo + minimap */
+  #radioBox { position:absolute; left:14px; bottom:14px; padding:7px 12px; max-width:300px; }
+  #radioStation { font-size:14px; font-weight:800; color:#ffd76a; }
+  #radioLine { font-size:12px; color:#dfe6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #speedo { position:absolute; right:14px; bottom:158px; padding:6px 12px; text-align:center; min-width:86px; }
+  #speedVal { font-size:26px; font-weight:900; }
+  #speedo small { font-size:10px; color:#cfd6e4; letter-spacing:1px; }
+  #minimapWrap { position:absolute; right:14px; bottom:14px; width:138px; height:138px;
+    border-radius:50%; overflow:hidden; border:2px solid rgba(255,255,255,.35);
+    box-shadow:0 4px 16px rgba(0,0,0,.5); background:#20303c; }
+  #minimap { width:138px; height:138px; display:block; }
+  #compass { position:absolute; right:66px; bottom:146px; font-size:12px; font-weight:800;
+    color:#fff; text-shadow:0 1px 3px #000; }
+
+  /* dispatch + dialogue + prompt */
+  #dispatch { position:absolute; left:14px; top:12px; width:280px; padding:8px 12px;
+    font-size:12.5px; line-height:1.45; color:#bcd7ff; }
+  #dispatch b { color:#7fb2ff; }
+  #dialogue { position:absolute; left:50%; bottom:9%; transform:translateX(-50%); width:min(680px,86%);
+    padding:12px 18px 10px; }
+  #dlgName { font-size:13px; font-weight:900; color:#ffd76a; letter-spacing:1.5px; }
+  #dlgText { font-size:17px; line-height:1.4; margin-top:2px; min-height:24px; }
+  #dlgHint { font-size:11px; color:#9fb2cc; margin-top:5px; text-align:right; }
+  #prompt { position:absolute; left:50%; bottom:21%; transform:translateX(-50%);
+    padding:7px 16px; font-size:15px; font-weight:700; color:#fff; }
+  #prompt b { color:#ffd76a; }
+  #crosshair { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:20px; color:rgba(255,255,255,.9); text-shadow:0 0 4px #000; }
+  #hitmark { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) rotate(45deg);
+    font-size:22px; color:#ff5d4d; opacity:0; font-weight:900; }
+
+  /* damage / state flashes */
+  #flashRed { position:fixed; inset:0; background:radial-gradient(ellipse at center, transparent 55%, rgba(200,0,0,.45));
+    opacity:0; pointer-events:none; z-index:6; transition:opacity .12s; }
+  #stateBig { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:74px; font-weight:900; letter-spacing:10px; z-index:7; pointer-events:none; opacity:0;
+    transition:opacity .4s; text-shadow:0 4px 0 rgba(0,0,0,.5); }
+
+  /* ---------- menu ---------- */
+  #menu { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; pointer-events:none;
+    background:linear-gradient(180deg, rgba(10,8,20,.18) 0%, rgba(10,8,20,0) 30%, rgba(10,8,20,0) 62%, rgba(8,6,16,.42) 100%); }
+  #menuTitle { text-align:center; margin-bottom:6px; }
+  #menuTitle .city { font-size:min(96px, 13vw); font-weight:900; letter-spacing:3px; line-height:.95;
+    color:#fff; text-shadow:0 4px 0 #c7512f, 0 8px 0 rgba(0,0,0,.28), 0 14px 34px rgba(0,0,0,.55); }
+  #menuTitle .city span { color:#ffb03a; }
+  #menuTitle .sub { font-size:min(21px,3.4vw); font-weight:800; letter-spacing:11px; color:#ffe9c4;
+    text-shadow:0 2px 8px rgba(0,0,0,.7); margin-top:8px; }
+  #menuBtns { display:flex; gap:12px; margin-top:30px; pointer-events:auto; flex-wrap:wrap; justify-content:center; }
+  .mbtn { font:inherit; font-size:16px; font-weight:800; letter-spacing:1.5px; color:#fff;
+    background:linear-gradient(180deg, rgba(24,28,40,.88), rgba(10,12,20,.88));
+    border:1px solid rgba(255,255,255,.35); border-bottom:3px solid #ffb03a; border-radius:8px;
+    padding:11px 22px; cursor:pointer; transition:transform .08s, background .15s; }
+  .mbtn:hover { background:linear-gradient(180deg, #c7512f, #93350f); transform:translateY(-1px); }
+  #menuFoot { margin-top:22px; font-size:12.5px; color:rgba(255,255,255,.85);
+    text-shadow:0 1px 4px #000; letter-spacing:.4px; }
+  #controlsCard { pointer-events:auto; margin-top:16px; max-width:640px; width:88%;
+    background:rgba(8,10,16,.82); border:1px solid rgba(255,255,255,.2); border-radius:10px;
+    padding:14px 20px; font-size:13.5px; line-height:1.65; color:#e6ecf6; }
+  #controlsCard b { color:#ffd76a; }
+
+  /* ---------- world map ---------- */
+  #worldMap { position:fixed; inset:0; z-index:15; background:rgba(6,10,14,.88);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  #worldMap h2 { margin:0 0 10px; letter-spacing:4px; font-size:22px; color:#ffe9c4; }
+  #mapCanvas { background:#1d2f3a; border:1px solid rgba(255,255,255,.25); border-radius:8px; }
+  #worldMap .hint { margin-top:10px; font-size:12.5px; color:#9fb2cc; }
+
+  /* ---------- cheat panel ---------- */
+  #cheatPanel { position:fixed; right:14px; top:230px; z-index:12; width:210px; padding:10px 12px; }
+  #cheatPanel h3 { margin:0 0 6px; font-size:12px; letter-spacing:2px; color:#ffd76a; }
+  #cheatPanel .code { font-size:12.5px; line-height:1.7; color:#dfe6f2; }
+  #cheatPanel .code b { color:#8fd0ff; }
+
+  /* ---------- touch controls ---------- */
+  #touch { position:fixed; inset:0; z-index:9; pointer-events:none; }
+  #stick { position:absolute; left:26px; bottom:96px; width:118px; height:118px; border-radius:50%;
+    background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.3); pointer-events:auto; }
+  #stickKnob { position:absolute; left:50%; top:50%; width:52px; height:52px; border-radius:50%;
+    background:rgba(255,255,255,.28); transform:translate(-50%,-50%); }
+  .tbtn { position:absolute; width:58px; height:58px; border-radius:50%; pointer-events:auto;
+    background:rgba(10,12,20,.55); border:1.5px solid rgba(255,255,255,.35); color:#fff;
+    font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; text-align:center; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud" class="hidden">
+  <div id="dispatch" class="panel hidden"></div>
+  <div id="objective" class="panel hidden"></div>
+  <div id="statsBox" class="panel">
+    <div id="money">Rp 250,000</div>
+    <div id="clockLine">12:00 · MON</div>
+    <div id="stars"></div>
+    <div id="bars">
+      <div class="barRow"><label>HEALTH</label><div class="barTrack"><div class="barFill" id="hpFill"></div></div></div>
+      <div class="barRow"><label>ARMOR</label><div class="barTrack"><div class="barFill" id="armorFill"></div></div></div>
+    </div>
+  </div>
+  <div id="weaponBox" class="panel">
+    <div id="weaponName">FISTS</div>
+    <div id="weaponAmmo"></div>
+  </div>
+  <div id="zoneBanner"></div>
+  <div id="toast" class="panel"></div>
+  <div id="radioBox" class="panel">
+    <div id="radioStation">98.4 KOTA FM</div>
+    <div id="radioLine">Jakarta's own sound, all day long</div>
+  </div>
+  <div id="speedo" class="panel hidden"><span id="speedVal">0</span><br><small>KM/H</small></div>
+  <div id="minimapWrap"><canvas id="minimap" width="276" height="276"></canvas></div>
+  <div id="compass">N</div>
+  <div id="dialogue" class="panel hidden">
+    <div id="dlgName">PAK HAJI</div>
+    <div id="dlgText"></div>
+    <div id="dlgHint">E / tap — continue</div>
+  </div>
+  <div id="prompt" class="panel hidden"></div>
+  <div id="crosshair" class="hidden">+</div>
+  <div id="hitmark">+</div>
+</div>
+<div id="flashRed"></div>
+<div id="stateBig"></div>
+
+<div id="worldMap" class="hidden">
+  <h2>JAKARTA CITY</h2>
+  <canvas id="mapCanvas" width="620" height="880"></canvas>
+  <div class="hint">P / M / MAP — close</div>
+</div>
+
+<div id="cheatPanel" class="panel hidden">
+  <h3>CHEAT CODES — type them</h3>
+  <div class="code"><b>BANYAKDUIT</b> money + full kit<br>
+  <b>MOBIL</b> sports car · <b>MOTOR</b> sport bike<br>
+  <b>SENJATA</b> all weapons<br>
+  <b>BINTANG5</b> max wanted · <b>BERSIH</b> clear wanted<br>
+  <b>SEHAT</b> heal · <b>ROMPI</b> armor<br>
+  <b>SIANG</b> noon · <b>MALAM</b> midnight</div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><div id="stickKnob"></div></div>
+</div>
+
+<div id="menu">
+  <div id="menuTitle">
+    <div class="city">JAKARTA <span>CITY</span></div>
+    <div class="sub">OPEN WORLD GAME</div>
+  </div>
+  <div id="menuBtns">
+    <button class="mbtn" id="btnNew">NEW GAME</button>
+    <button class="mbtn hidden" id="btnContinue">CONTINUE</button>
+    <button class="mbtn hidden" id="btnLoad">LOAD GAME</button>
+    <button class="mbtn" id="btnControls">CONTROLS</button>
+  </div>
+  <div id="controlsCard" class="hidden">
+    <b>Move</b> W A S D · <b>Sprint</b> Shift · <b>Jump</b> Space · <b>Enter / exit car</b> F ·
+    <b>Talk / use</b> E · <b>Attack / fire</b> Mouse · <b>Aim</b> Right mouse ·
+    <b>Weapons</b> 1–6 / wheel · <b>Map</b> P or M · <b>Horn</b> H · <b>Cheats</b> just type the code ·
+    <b>Camera</b> mouse drag / arrows. On a boat: F boards, W/S throttle, A/D steer.
+  </div>
+  <div id="menuFoot">An original open-world game — explore the island city, work the story, outrun the law.</div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
